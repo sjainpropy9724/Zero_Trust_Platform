@@ -1,0 +1,4 @@
+Invoice #SSN-987-654 for Mr. Alok Verma is attached. 
+He works at the Chennai branch of Omni Consumer Products. 
+His order, reference #ORD-123, was shipped on Monday from the warehouse located at 123 Main Street. 
+For support, contact support@example.com.

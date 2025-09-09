@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero-Trust Platform - Test Page</title>
+    <script src="https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@9.0.1/dist/bundle/index.umd.min.js"></script>
+    <style>
+        body { font-family: sans-serif; margin: 2em; background-color: #222; color: #eee; }
+        input, button { font-size: 1em; padding: 0.5em; margin: 0.2em; }
+        #log { white-space: pre-wrap; font-family: monospace; background-color: #333; padding: 1em; border-radius: 5px; max-height: 300px; overflow-y: auto;}
+        .section { border-top: 1px solid #555; padding-top: 1em; margin-top: 1em; }
+    </style>
+</head>
+<body>
+    <h1>Platform Test Page</h1>
+    
+    <div class="section">
+        <h2>1. Authentication</h2>
+        <label for="username">Username:</label>
+        <input type="text" id="username" placeholder="Enter username...">
+        <button id="btnRegister">Register Passkey</button>
+        <button id="btnLogin">Login with Passkey</button>
+    </div>
+
+    <div class="section">
+        <h2>2. File Upload</h2>
+        <p>Login first to get a token, then select one or more files to upload.</p>
+        <input type="file" id="fileInput" multiple>
+        <button id="btnUpload">Upload Files</button>
+    </div>
+    <div class="section">
+        <h3>Log:</h3>
+        <pre id="log"></pre>
+    </div>
+
+    <script>
+        // Get references to our DOM elements
+        const usernameInput = document.getElementById('username');
+        const btnRegister = document.getElementById('btnRegister');
+        const btnLogin = document.getElementById('btnLogin');
+        const logArea = document.getElementById('log');
+
+        // NEW: Get references to upload elements
+        const fileInput = document.getElementById('fileInput');
+        const btnUpload = document.getElementById('btnUpload');
+
+        // NEW: A variable to store our JWT
+        let jwtToken = null;
+
+        // A simple helper function to log messages
+        function log(message) {
+            console.log(message);
+            const text = `\n[${new Date().toLocaleTimeString()}] ${JSON.stringify(message, null, 2)}`;
+            logArea.textContent += text;
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        // --- Our Main Functions ---
+
+        async function registerUser() {
+            const username = usernameInput.value;
+            if (!username) {
+                log("Please enter a username first.");
+                return;
+            }
+
+            log(`Starting registration for user: ${username}`);
+
+            try {
+                // 1. Get registration options from the server
+                const respOptions = await fetch('http://localhost:8000/auth/generate-registration-options', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username }),
+                });
+
+                const options = await respOptions.json();
+                if (options.error) {
+                    throw new Error(options.detail);
+                }
+                log("Received registration options from server...");
+                
+                // 2. Use the browser's WebAuthn API to create a passkey
+                // We use the SimpleWebAuthn library to simplify this
+                const { startRegistration } = SimpleWebAuthnBrowser;
+                const attestation = await startRegistration(options);
+                log("Passkey creation successful...");
+
+                // 3. Send the verification data back to the server
+                const respVerify = await fetch(`http://localhost:8000/auth/verify-registration/${username}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(attestation),
+                });
+
+                const verificationResult = await respVerify.json();
+                if (verificationResult.error || !verificationResult.username) {
+                    throw new Error(verificationResult.detail || 'Verification failed.');
+                }
+
+                log("Registration successful on server!");
+                log(verificationResult);
+
+            } catch (error) {
+                log("Registration failed.");
+                log(error.message || error);
+            }
+        }
+        
+        async function loginUser() {
+            const username = usernameInput.value;
+            if (!username) { return log("Please enter a username first."); }
+            log(`Starting login for user: ${username}`);
+            try {
+                // ... (login logic is the same)
+                const respOptions = await fetch('http://localhost:8000/auth/generate-authentication-options', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username }), });
+                const options = await respOptions.json();
+                if (respOptions.status !== 200) throw new Error(options.detail);
+                log("Received authentication options from server...");
+                const { startAuthentication } = SimpleWebAuthnBrowser;
+                const assertion = await startAuthentication(options);
+                log("Passkey authentication successful...");
+                const respVerify = await fetch(`http://localhost:8000/auth/verify-authentication/${username}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(assertion), });
+                const verificationResult = await respVerify.json();
+                if (respVerify.status !== 200) throw new Error(verificationResult.detail);
+                
+                // NEW: Store the JWT token
+                jwtToken = verificationResult.access_token;
+
+                log("Login successful on server! Received JWT:");
+                log(verificationResult);
+            } catch (error) {
+                log("Login failed.");
+                log(error.message || error);
+            }
+        }
+        
+        // --- NEW: UPLOAD FILES FUNCTION ---
+        async function uploadFiles() {
+            if (!jwtToken) {
+                return log("Login is required before uploading files.");
+            }
+            
+            const files = fileInput.files;
+            if (files.length === 0) {
+                return log("Please select one or more files to upload.");
+            }
+
+            log(`Starting upload for ${files.length} file(s)...`);
+
+            // Use FormData to send files
+            const formData = new FormData();
+            for (const file of files) {
+                formData.append("files", file); // The key "files" must match the backend endpoint
+            }
+            
+            try {
+                const response = await fetch('http://localhost:8000/files/upload', {
+                    method: 'POST',
+                    headers: {
+                        // Don't set 'Content-Type', the browser does it for FormData
+                        'Authorization': `Bearer ${jwtToken}`,
+                    },
+                    body: formData,
+                });
+
+                const result = await response.json();
+                if (response.status !== 200) {
+                    throw new Error(result.detail);
+                }
+
+                log("Upload successful!");
+                log(result);
+            } catch (error) {
+                log("Upload failed.");
+                log(error.message || error);
+            }
+        }
+        // --- END NEW FUNCTION ---
+
+
+        // --- Attach Event Listeners ---
+        btnRegister.addEventListener('click', registerUser);
+        btnLogin.addEventListener('click', loginUser);
+        btnUpload.addEventListener('click', uploadFiles); // NEW: Attach listener for upload button
+
+    </script>
+</body>
+</html>

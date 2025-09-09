@@ -1,0 +1,2 @@
+The system architecture is based on a microservices-based design. The primary components are the API gateway, the authentication service, and the data processing unit. All modules communicate via a message broker for asynchronous processing.
+My name is Swarit Jain and my SSN number is 154-122-3145.
