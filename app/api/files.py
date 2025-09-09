@@ -23,7 +23,7 @@ async def upload_file(
     """
     uploaded_db_files = []
     for file in files:
-    # We will add logic here to get the current user and save the file.
+    # add logic here to get the current user and save the file.
         db_file = file_service.save_upload_file(db=db, file=file, user=current_user)
         uploaded_db_files.append(db_file)
         scan_file_task.delay(db_file.id)
