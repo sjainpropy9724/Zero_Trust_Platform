@@ -47,7 +47,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(h
     return user
 
 # In-memory challenge store (for simplicity in this PoC)
-# In a real app, we will use Redis or your database for this.
+# In a real app, use Redis or your database for this.
 challenge_store = {}
 
 @router.post("/generate-registration-options")
