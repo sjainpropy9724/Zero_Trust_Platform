@@ -1,0 +1,5 @@
+Minutes for the Q4 Planning Meeting.
+Date: November 10th, 2025
+Location: New York Office (Boardroom A)
+Attendees: Representatives from Acme Corp and Global Industries.
+Action Items: Update the staging servers at 192.168.1.55 by Friday.

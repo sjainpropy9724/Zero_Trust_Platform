@@ -1,0 +1,2 @@
+The project roadmap for the upcoming quarter focuses on performance optimization and user interface improvements. 
+We will be refactoring the backend codebase to reduce latency by 20%.

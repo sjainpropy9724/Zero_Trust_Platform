@@ -1,0 +1,6 @@
+Employee Verification Details:
+Name: Sarah Connor
+Email: sarah.connor@skynet.com
+Phone: +1-555-0199
+Social Security Number: 987-65-4320
+Please process this specifically for the new HR portal.

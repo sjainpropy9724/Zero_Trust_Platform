@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero-Trust Collaboration | Secure Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@9.0.1/dist/bundle/index.umd.min.js"></script>
+    <style>
+        :root { --bg: #1a1a1a; --text: #e0e0e0; --accent: #00ff88; --danger: #ff5555; --warn: #ffbe0b; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .panel { background: #2a2a2a; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        .file-card { background: #333; padding: 15px; border-radius: 8px; border-left: 4px solid var(--accent); }
+        .file-card.confidential { border-left-color: var(--danger); }
+        button { background: #444; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin-right: 5px; }
+        button:hover { background: var(--accent); color: black; }
+        .btn-danger { background: var(--danger); } .btn-danger:hover { opacity: 0.9; color: white; }
+        .btn-admin { background: var(--warn); color: black; font-weight: bold; }
+        input, select { padding: 8px; background: #222; border: 1px solid #444; color: white; border-radius: 4px; }
+        #logArea { height: 150px; overflow-y: auto; font-family: monospace; background: #111; padding: 10px; opacity: 0.8; }
+        .hidden { display: none !important; }
+        .badge { display: inline-block; padding: 2px 6px; border-radius: 10px; font-size: 0.8em; font-weight: bold; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛡️ Zero-Trust Platform</h1>
+            <div id="userInfo" class="hidden">
+                Logged in as: <strong id="currentUsername" style="color: var(--accent);"></strong>
+                <a id="adminLink" href="http://localhost:8501" target="_blank" class="hidden">
+                    <button class="btn-admin">🚨 Open Admin SOC Dashboard</button>
+                </a>
+                <button onclick="logoutUser()" class="btn-danger" style="margin-left: 15px;">Logout</button>
+            </div>
+        </header>
+
+        <div id="authPanel" class="panel">
+            <h2>Authenticate</h2>
+            <input type="text" id="username" placeholder="Enter Username">
+            <button onclick="registerUser()">Register Device</button>
+            <button onclick="loginUser()" style="background: var(--accent); color: black;">Login</button>
+        </div>
+
+        <div id="dashboardPanel" class="hidden">
+            <div class="panel">
+                <h2>Secure Upload</h2>
+                <div style="display: flex; gap: 10px;">
+                    <input type="file" id="fileInput" multiple style="flex-grow: 1;">
+                    <button onclick="uploadFiles()" style="background: var(--accent); color: black;">Encrypt & Upload</button>
+                </div>
+            </div>
+            <div class="panel">
+                 <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>My Secure Files</h2>
+                    <button onclick="loadFiles()">🔄 Refresh</button>
+                </div>
+                <div id="fileGrid" class="grid"></div>
+            </div>
+        </div>
+
+        <div class="panel"><h3>Activity Log</h3><div id="logArea"></div></div>
+    </div>
+
+    <script>
+        let jwtToken = null;
+        const API_URL = 'http://localhost:8000';
+
+        function log(msg, isError = false) {
+            const logArea = document.getElementById('logArea');
+            logArea.innerHTML += `<div style="color: ${isError ? '#ff5555' : '#00ff88'}">[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        async function registerUser() {
+            const username = document.getElementById('username').value;
+            if (!username) return log("Enter username first", true);
+            try {
+                const resp = await fetch(`${API_URL}/auth/generate-registration-options`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username}) });
+                const attResp = await SimpleWebAuthnBrowser.startRegistration(await resp.json());
+                await fetch(`${API_URL}/auth/verify-registration/${username}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(attResp) });
+                log(`Registered ${username}! Please login.`);
+            } catch (e) { log(`Registration failed: ${e.message}`, true); }
+        }
+
+        async function loginUser() {
+            const username = document.getElementById('username').value;
+            if (!username) return log("Enter username first", true);
+            try {
+                const resp = await fetch(`${API_URL}/auth/generate-authentication-options`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username}) });
+                const asseResp = await SimpleWebAuthnBrowser.startAuthentication(await resp.json());
+                const verifyResp = await fetch(`${API_URL}/auth/verify-authentication/${username}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(asseResp) });
+                if (!verifyResp.ok) throw new Error((await verifyResp.json()).detail);
+                
+                const result = await verifyResp.json();
+                jwtToken = result.access_token;
+                
+                // NEW: Check role to show/hide admin button
+                // (In a real app, we'd decode the JWT, but we'll just trust the server response for this MVP if we added role to it, 
+                //  OR just let them try to click it and fail if not actually admin on the Streamlit side.
+                //  For MVP simplicity, let's just show it if username is 'admin' for now, or we need to update the login response to include role.)
+                if (username.toLowerCase() === 'admin') {
+                    document.getElementById('adminLink').classList.remove('hidden');
+                } else {
+                    document.getElementById('adminLink').classList.add('hidden');
+                }
+
+                document.getElementById('authPanel').classList.add('hidden');
+                document.getElementById('dashboardPanel').classList.remove('hidden');
+                document.getElementById('userInfo').classList.remove('hidden');
+                document.getElementById('currentUsername').textContent = username;
+                log(`Logged in as ${username}.`);
+                loadFiles();
+            } catch (e) { log(`Login failed: ${e.message}`, true); }
+        }
+
+        function logoutUser() {
+            jwtToken = null;
+            document.getElementById('authPanel').classList.remove('hidden');
+            document.getElementById('dashboardPanel').classList.add('hidden');
+            document.getElementById('userInfo').classList.add('hidden');
+            document.getElementById('username').value = '';
+            log("Logged out successfully.");
+        }
+
+        async function loadFiles() {
+            const resp = await fetch(`${API_URL}/files/`, { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+            const files = await resp.json();
+            const grid = document.getElementById('fileGrid');
+            grid.innerHTML = '';
+            files.forEach(f => {
+                const isConfidential = f.sensitivity_level?.toUpperCase() === 'CONFIDENTIAL';
+                grid.innerHTML += `
+                    <div class="file-card ${isConfidential ? 'confidential' : ''}">
+                        <h3>${f.filename}</h3>
+                        <p><span class="badge" style="background: ${isConfidential ? 'var(--danger)' : '#555'}">${f.sensitivity_level || 'Scanning...'}</span> <small>(ID: ${f.id})</small></p>
+                        <div style="margin-bottom:10px;"><button onclick="downloadFile(${f.id})">⬇ Download</button><button onclick="viewFile(${f.id})">👁 View</button><button onclick="deleteFile(${f.id})" class="btn-danger">🗑</button></div>
+                        <div style="display:flex;gap:5px;"><input type="text" id="shareUser-${f.id}" placeholder="User" style="width:60px;"><select id="sharePerm-${f.id}"><option value="view">View</option><option value="download">Download</option></select><button onclick="shareFile(${f.id})" style="font-size:0.8em">Share</button></div>
+                    </div>`;
+            });
+        }
+
+        async function uploadFiles() {
+            const formData = new FormData();
+            for (const file of document.getElementById('fileInput').files) formData.append("files", file);
+            if ((await fetch(`${API_URL}/files/upload`, { method: 'POST', headers: { 'Authorization': `Bearer ${jwtToken}` }, body: formData })).ok) { log("Uploaded. Scanning..."); setTimeout(loadFiles, 2500); }
+        }
+        async function downloadFile(id) {
+            const resp = await fetch(`${API_URL}/files/${id}/download`, { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+            if (resp.ok) { const a = document.createElement('a'); a.href = window.URL.createObjectURL(await resp.blob()); a.download = `file-${id}`; a.click(); log("Download success."); }
+            else log(`❌ BLOCKED: ${(await resp.json()).detail}`, true);
+        }
+        async function viewFile(id) {
+            const resp = await fetch(`${API_URL}/files/${id}/view`, { headers: { 'Authorization': `Bearer ${jwtToken}` } });
+            if (resp.ok) { window.open(window.URL.createObjectURL(await resp.blob()), '_blank'); log("Secure view opened."); }
+            else log(`❌ BLOCKED: ${(await resp.json()).detail}`, true);
+        }
+        async function shareFile(id) {
+            const u = document.getElementById(`shareUser-${id}`).value, p = document.getElementById(`sharePerm-${id}`).value;
+            if ((await fetch(`${API_URL}/files/${id}/share`, { method: 'POST', headers: {'Authorization': `Bearer ${jwtToken}`, 'Content-Type': 'application/json'}, body: JSON.stringify({username: u, permission: p}) })).ok) log(`Shared file ${id} with ${u}.`);
+            else log("Share failed.", true);
+        }
+        async function deleteFile(id) {
+            if (confirm("Delete file?")) { if ((await fetch(`${API_URL}/files/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${jwtToken}` } })).ok) { log(`Deleted file ${id}.`); loadFiles(); } else log("Delete failed.", true); }
+        }
+    </script>
+</body>
+</html>

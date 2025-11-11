@@ -1,0 +1,33 @@
+# FastAPI and Server
+fastapi
+uvicorn[standard]
+python-multipart
+celery[redis]
+
+# Database
+sqlalchemy
+psycopg2-binary
+alembic
+
+# WebAuthn & Security
+webauthn
+python-jose[cryptography]
+passlib[bcrypt]
+
+# Settings Management
+pydantic-settings
+### fastapi & uvicorn: For building and running our high-performance API.
+### sqlalchemy, psycopg2-binary, alembic: For talking to our PostgreSQL database and managing schema changes (migrations).
+### py_webauthn, python-jose, passlib: For implementing our advanced passwordless authentication and JWTs.
+
+transformers
+
+# File Support
+python-docx
+pypdf
+openpyxl
+Pillow
+pdf2image
+
+Faker
+requests

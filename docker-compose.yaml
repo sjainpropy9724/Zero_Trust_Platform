@@ -1,0 +1,59 @@
+# version: '3.8'
+
+services:
+  # Our FastAPI Application
+  api:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+      - huggingface_cache:/root/.cache/huggingface
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/mydatabase
+
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=mydatabase
+    ports:
+      - "5432:5432"
+
+  # Redis Cache/Broker
+  redis:
+    image: redis:7-alpine
+
+  celery-worker:
+    build: .
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    volumes:
+      - .:/app
+      - huggingface_cache:/root/.cache/huggingface
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/mydatabase
+    depends_on:
+      - redis
+      - db
+      - api
+  
+  opa:
+    image: openpolicyagent/opa:latest-static
+    # ADD "--addr=0.0.0.0:8181" to the command list below:
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "--log-level=info", "--watch", "/policies"]
+    volumes:
+      - ./policies:/policies
+    ports:
+      - "8181:8181"
+
+volumes:
+  postgres_data:
+  huggingface_cache:

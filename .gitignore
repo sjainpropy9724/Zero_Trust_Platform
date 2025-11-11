@@ -1,0 +1,5 @@
+venv
+uploads
+__pycache__
+analytics
+chaos_generator.py
